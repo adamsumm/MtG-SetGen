@@ -20,7 +20,7 @@ with open('data/allCardsMod.json') as data_file:
             set2cards[mid['setCode']].append(card)
 
 card2vec = {}
-cardvecfile = 'card2vec50_100_13' # 'cardvectors.data'
+cardvecfile = 'dbowCardVecs50_100_22' # 'cardvectors.data'
 with open(cardvecfile,'rb') as cardvectors:
     for card in cardvectors:
         card = card.rstrip().split('@')
@@ -33,7 +33,7 @@ setvec = []
 cards = []
 
 import unicodedata
-for card in set2cards['M10']:
+for card in set2cards['M14']:
     cards.append(card)
     setvec.append(card2vec[unicodedata.normalize('NFKD', card.lower()).encode('ascii','ignore')])
     
@@ -45,7 +45,7 @@ bestFit = float('inf')
 from sklearn import cluster
 #'diag' seems better than full
 bestNC = -1
-for nC in range(20,100,5):
+for nC in range(int(len(cards)/5),int(len(cards)/5)+1,10):
     for covar in ['tied']:
         gmm = mixture.GMM(n_components=nC, covariance_type=covar)
         gmm.fit(setvec)

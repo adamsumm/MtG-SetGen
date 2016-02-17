@@ -14,13 +14,13 @@ import numpy as np
 import sklearn
 from sklearn import mixture
 import json
-size = 50
-window = 100
-epoch = 13
+import unicodedata
+train = True
 
+cvFile = 'dbowWVCardVecs_50_100_22'
 cardvec = []
 card2vec = {}
-with open('card2vec{}_{}_{}'.format(size,window,epoch),'rb') as cardvecfile:
+with open(cvFile,'rb') as cardvecfile:
     for line in cardvecfile:
         line = line.rstrip().split('@')
         name = line[0]
@@ -30,26 +30,27 @@ cardvec = np.array(cardvec)
 #model = Doc2Vec.load('model{}_{}_{}'.format(size,window,epoch))
 #cardvecs = model.docvecs
 
-bestFit = float('inf')
-bestGMM = None
-bestNC = 0
-bestCovar = ''
-cardvec = sklearn.preprocessing.scale(cardvec)
-for nC in range(20,250,10):
-    for covar in ['diag','tied']:
-        gmm = mixture.GMM(n_components=nC, covariance_type=covar)
-        gmm.fit(cardvec)
-        bic =  gmm.bic(cardvec)
-        print nC,covar, bic
-        sys.stdout.flush()
-    if bic < bestFit:
-        bestNC = nC
-        bestFit = bic
-        bestCovar = covar
-        bestGMM = gmm
-pickle.dump(bestGMM,open('cardMixtureModel.pkl','wb'))        
+if train:
+    bestFit = float('inf')
+    bestGMM = None
+    bestNC = 0
+    bestCovar = ''
+    #cardvec = sklearn.preprocessing.scale(cardvec)
+    for nC in range(70,75,10):
+        for covar in ['tied']:
+            gmm = mixture.GMM(n_components=nC, covariance_type=covar)
+            gmm.fit(cardvec)
+            bic =  gmm.bic(cardvec)
+            print nC,covar, bic
+            sys.stdout.flush()
+        if bic < bestFit:
+            bestNC = nC
+            bestFit = bic
+            bestCovar = covar
+            bestGMM = gmm
+            pickle.dump(bestGMM,open(cvFile+'MixtureModel.pkl','wb'))        
 
-bestGMM = pickle.load(open('cardMixtureModel.pkl','rb'))
+bestGMM = pickle.load(open(cvFile+'MixtureModel.pkl','rb'))
 card2sets = {}
 set2cards = {}
 with open('data/allCardsMod.json') as data_file:    
@@ -62,17 +63,16 @@ with open('data/allCardsMod.json') as data_file:
                 set2cards[mid['setCode']] = []
             set2cards[mid['setCode']].append(card)
 
-import unicodedata
 cards = []
 setvec = []
-for card in set2cards['M10']:
+for card in set2cards['M14']:
     cards.append(card)
     setvec.append(card2vec[unicodedata.normalize('NFKD', card.lower()).encode('ascii','ignore').replace('-','~')])
                 
  
 setvec = np.array(setvec)    
 clusters =bestGMM.predict(setvec)
-clusters2card = {ii:[] for ii in range(70)}
+clusters2card = {ii:[] for ii in range(len(bestGMM.means_))}
 for card,cluster in zip(cards,clusters):
     clusters2card[cluster].append(card)
 

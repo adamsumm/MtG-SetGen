@@ -12,12 +12,12 @@ import numpy as np
 from random import shuffle
 
 
-size = 50
-window =100
-epoch = 22
+size = 200
+window =15
+epoch = 19
 
-dbow = Doc2Vec.load('dbow{}_{}_{}'.format(size,window,epoch))
-dm = Doc2Vec.load('dm{}_{}_{}'.format(size,window,epoch))
+dbow = Doc2Vec.load('dbowDS{}_{}_{}'.format(size,window,epoch))
+dm = Doc2Vec.load('dmDS{}_{}_{}'.format(size,window,epoch))
 def getConcatVec(models,token):
     return np.concatenate([model.docvecs[token] for model in models])
 with open('concatCardVecs{}_{}_{}'.format(size,window,epoch),'wb') as outfile:
