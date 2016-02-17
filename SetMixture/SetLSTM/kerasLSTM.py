@@ -15,6 +15,7 @@ from keras.datasets.data_utils import get_file
 import numpy as np
 import random
 import sys
+import gc
 import re,sys,subprocess,os,struct,math
 from os import listdir
 from os.path import isfile, join
@@ -26,7 +27,7 @@ from gensim.models import Doc2Vec
 import gensim.models.doc2vec
 import numpy as np
 from random import shuffle
-
+window = 10
 nameFieldPattern = re.compile("\\|(.*?)\\|.*?",re.IGNORECASE|re.DOTALL)
 manaCostPattern = re.compile("(\\{.*?\\})",re.IGNORECASE|re.DOTALL)
 cards = []
@@ -42,14 +43,30 @@ with open('dbowCardVecs50_100_22','rb') as cardvecfile:
         cardvec.append([float(v) for v in line[1:]])
         card2vec[name] = np.array(cardvec[-1])
 cardvec = np.array(cardvec)
+
+minWordVec = float('inf')
 with open('dbowWordVecs_50_100_22','rb') as wvFile:
     for line in wvFile:
         card = line.rstrip().split('@')
         name = card[0]
         name = name.replace('!','@')
         word2vec[name] = np.array([float(v) for v in card[1:]])
+        minWordVec = min(minWordVec,np.linalg.norm(word2vec[name]))
         dim = len(word2vec[name])
+print(minWordVec)
 
+def vecs2words(vecs,dist = lambda x,y: np.linalg.norm(x-y)):
+    output = []
+    for v in vecs:
+        minDist = float('inf')
+        bestWord = ''
+        for word,wv in word2vec.items():
+            d = dist(v,x)
+            if d < minDist:
+                minDist = d
+                bestWord = word
+        output.append(bestWord)
+    return output
 
 with open("corpus_encoded.txt",'rb') as corpus:
     for card in corpus:
@@ -64,36 +81,55 @@ with open("convertedcorpus.txt",'rb') as corpus:
         card = card.split(' ')
         cardT = []
         
-        
-        cardVec = []
+        for ii in range(window-1):
+            cards.append(card2vec[name]*0)
+        cards.append(card2vec[name])
         for w in card:
-            if w != ''  and w != '\r\n':
-                cardVec.append(word2vec[w])
-        cardVec = np.array(cardVec)
-        cardLength = max(len(cardVec),cardLength)
-        cards.append(cardVec)
-        
-X = np.zeros((len(cards),cardLength+1,dim))
-y  = np.zeros((len(cards),dim))
+            if w != ''  and '\n' not in w:
+                cards.append(word2vec[w])
+                
+cards = cards[:int(len(cards)/8)]
+print((len(cards)-window,window,dim))
+gc.collect()
+print((len(cards)-window)*window*dim*32.0/1000.0/1000.0)
+X = np.zeros((len(cards)-window,window,dim))
+y  = np.zeros((len(cards)-window,dim))
 for ii,card in enumerate(cards):
-    X[ii,1:card.shape[0]+1,:] = card
-    X[ii,0,:] = cardvec[ii]
-    y[ii] = cardvec[ii]
+    if ii + window >= len(y):
+        break
+    for t in range(window):        
+        X[ii,t,:] = cards[ii+t]
+    y[ii] = cards[ii+window]
 
 # build the model: 2 stacked LSTM
 print('Build model...')
 model = Sequential()
-model.add(LSTM(256, return_sequences=True, input_shape=(cardLength, dim)))
+model.add(LSTM(128, return_sequences=True, input_shape=(window, dim)))
 model.add(Dropout(0.2))
-model.add(LSTM(256, return_sequences=False))
+model.add(LSTM(128, return_sequences=False))
 model.add(Dropout(0.2))
 model.add(Dense(dim))
-
-model.compile(loss='cosine_proximity', optimizer='rmsprop')
+tol = 0.01
+model.compile(loss='mse', optimizer='rmsprop')
 json_string = model.to_json()
 for iteration in range(1, 60):
     print()
     print('-' * 50)
     print('Iteration', iteration)
-    model.fit(X, y, batch_size=1, nb_epoch=1)
-    model.save_weights('vecLSTM.h5')
+    model.fit(X, y, batch_size=10, nb_epoch=1)
+    model.save_weights('vecLSTM{}.h5'.format(iteration))
+    for name in ['lightning bolt','runeclaw bear','counterspell']:
+        words = [card2vec[name]]
+        pred = np.ones(dim)
+        maxLen = 150
+        while np.linalg.norm(pred) > tol:
+            if maxLen <= 0:
+                break
+            maxLen -= 1
+            x = np.zeros((1,window,dim))
+            for ii in range(len(words)-1,max(len(words)-window,-1),-1):
+                x[0,window-len(words)+ii,:] = words[ii]
+            pred = model.predict(x)
+            words.append(pred)
+        print(' '.join(vecs2words(words[1])))
+                
